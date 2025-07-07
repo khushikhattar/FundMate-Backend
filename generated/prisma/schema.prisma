@@ -1,0 +1,130 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CamapignCreator
+  Donor
+  Admin
+}
+
+enum CampaignStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum MilestoneStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum TransactionType {
+  DONATION
+  PAYOUT
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id           Int             @id @default(autoincrement())
+  role         Role            @default(Donor)
+  firstname    String
+  lastname     String
+  username     String          @unique
+  contact      String
+  password     String
+  address      String
+  refreshToken String
+  email        String          @unique
+  purpose      String?
+  campaigns    Campaign[]      @relation("UserCampaigns")
+  donations    Donation[]
+  transactions Transaction[]
+  votes        MilestoneVote[]
+}
+
+model Campaign {
+  id           Int            @id @default(autoincrement())
+  title        String
+  description  String
+  isActive     Boolean        @default(false)
+  cstatus      CampaignStatus @default(PENDING)
+  createdAt    DateTime       @default(now())
+  goalAmount   BigInt
+  amountRaised BigInt
+  userId       Int
+  user         User           @relation("UserCampaigns", fields: [userId], references: [id])
+  donations    Donation[]
+  milestones   Milestone[]
+  transactions Transaction[]
+}
+
+model Donation {
+  id         Int      @id @default(autoincrement())
+  amount     BigInt
+  createdAt  DateTime @default(now())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id])
+  campaignId Int
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+}
+
+model Milestone {
+  id           Int             @id @default(autoincrement())
+  title        String
+  description  String?
+  amount       BigInt
+  proofUrl     String?
+  status       MilestoneStatus @default(PENDING)
+  createdAt    DateTime        @default(now())
+  campaignId   Int
+  campaign     Campaign        @relation(fields: [campaignId], references: [id])
+  votes        MilestoneVote[]
+  transactions Transaction[]
+}
+
+model MilestoneVote {
+  id          Int       @id @default(autoincrement())
+  approved    Boolean
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id])
+  milestoneId Int
+  milestone   Milestone @relation(fields: [milestoneId], references: [id])
+
+  @@unique([userId, milestoneId])
+}
+
+model Transaction {
+  id          Int               @id @default(autoincrement())
+  type        TransactionType
+  amount      BigInt
+  status      TransactionStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
+  userId      Int
+  user        User              @relation(fields: [userId], references: [id])
+  campaignId  Int
+  campaign    Campaign          @relation(fields: [campaignId], references: [id])
+  milestoneId Int?
+  milestone   Milestone?        @relation(fields: [milestoneId], references: [id])
+}
