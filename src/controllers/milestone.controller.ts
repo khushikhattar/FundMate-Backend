@@ -155,7 +155,7 @@ const updateMilestone = async (req: Request, res: Response) => {
   }
 };
 
-import { MilestoneStatus } from "@prisma/client"; // Ensure this is imported
+import { MilestoneStatus } from "@prisma/client";
 
 const voting = async (req: Request, res: Response) => {
   try {
