@@ -1,17 +1,59 @@
-import { Router } from "express";
+import express from "express";
 import {
   addCampaign,
+  readCampaigns,
+  getCreatorCampaigns,
+  getDonatedCampaigns,
   deleteCampaign,
-  readCampaign,
-  isAprroved,
   updateCampaign,
+  approveCampaign,
 } from "../controllers/campaign.controller";
-import { authorizeRoles } from "../middleware/roleMiddleware";
 import { verifyUser } from "../middleware/authMiddleware";
-const router = Router();
-router.route("/add").post();
-router.route("/").delete();
-router.route("/update").patch();
-router.route("/approve:id").post();
+import { authorizeRoles } from "../middleware/roleMiddleware";
+
+const router = express.Router();
+
+router.post(
+  "/campaign",
+  verifyUser,
+  authorizeRoles("CampaignCreator"),
+  addCampaign
+);
+router.get(
+  "/read",
+  verifyUser,
+  authorizeRoles("CampaignCreator", "Admin", "Donor"),
+  readCampaigns
+);
+router.get(
+  "/campaign/donated",
+  verifyUser,
+  authorizeRoles("Donor"),
+  getDonatedCampaigns
+);
+router.get(
+  "/campaign/creator",
+  verifyUser,
+  authorizeRoles("CampaignCreator"),
+  getCreatorCampaigns
+);
+router.delete(
+  "/campaign/:id",
+  verifyUser,
+  authorizeRoles("Admin"),
+  deleteCampaign
+);
+router.patch(
+  "/campaign/:id",
+  verifyUser,
+  authorizeRoles("CampaignCreator"),
+  updateCampaign
+);
+router.patch(
+  "/campaign/:id/approve",
+  verifyUser,
+  authorizeRoles("Admin"),
+  approveCampaign
+);
 
 export default router;

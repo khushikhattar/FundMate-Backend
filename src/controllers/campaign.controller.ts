@@ -1,13 +1,16 @@
 import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
 import { z } from "zod";
-let prisma = new PrismaClient();
+
+const prisma = new PrismaClient();
+
 const addSchema = z.object({
   title: z.string(),
   description: z.string(),
   goalAmount: z.bigint(),
 });
 type addPayload = z.infer<typeof addSchema>;
+
 const addCampaign = async (req: Request, res: Response) => {
   try {
     const parseResult = addSchema.safeParse(req.body);
@@ -22,8 +25,12 @@ const addCampaign = async (req: Request, res: Response) => {
       res.status(400).json({ message: "User not authenticated" });
       return;
     }
+    if (req.user.role !== "CampaignCreator") {
+      res.status(400).json({ message: "User not authorised" });
+      return;
+    }
     const { title, description, goalAmount }: addPayload = parseResult.data;
-    const addedcampaign = await prisma.campaign.create({
+    const addedCampaign = await prisma.campaign.create({
       data: {
         title,
         description,
@@ -32,51 +39,112 @@ const addCampaign = async (req: Request, res: Response) => {
         userId: req.user.id,
       },
     });
-    if (!addedcampaign) {
-      res.status(400).json({ message: "Error creating the campaign" });
-      return;
-    }
-    res.status(200).json({ message: "Campaign created successfully" });
+
+    res.status(201).json({
+      message: "Campaign created successfully",
+      campaign: addedCampaign,
+    });
   } catch (error) {
+    console.error("Error in addCampaign:", error);
+    res.status(500).json({ message: "Internal server error" });
+    return;
+  }
+};
+const readCampaigns = async (req: Request, res: Response) => {
+  try {
+    const { isApproved, userId } = req.query;
+
+    const filters: any = {};
+    if (isApproved === "true") {
+      filters.cstatus = "APPROVED";
+    } else if (isApproved === "false") {
+      filters.cstatus = "PENDING";
+    }
+    if (userId) {
+      filters.userId = parseInt(userId as string);
+    }
+
+    const campaigns = await prisma.campaign.findMany({
+      where: filters,
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstname: true,
+            lastname: true,
+            username: true,
+            email: true,
+          },
+        },
+        donations: true,
+        milestones: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    res.status(200).json({ campaigns });
+  } catch (error) {
+    console.error("Error reading campaigns:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+const getCreatorCampaigns = async (req: Request, res: Response) => {
+  try {
+    const campaigns = await prisma.campaign.findMany({
+      where: { userId: req.user?.id },
+      orderBy: { createdAt: "desc" },
+      include: { user: true },
+    });
+
+    res.status(200).json({
+      message: "Your campaigns fetched",
+      campaigns,
+    });
+  } catch (error) {
+    console.error("getCreatorCampaigns error:", error);
     res.status(500).json({ message: "Internal server error" });
     return;
   }
 };
 
-const readCampaign = async (req: Request, res: Response) => {
+const getDonatedCampaigns = async (req: Request, res: Response) => {
   try {
-    if (!req.user || req.user.role !== "Admin") {
-      res.status(403).json({ message: "Access denied. Admins only." });
-      return;
-    }
-    const campaigns = await prisma.campaign.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { user: true },
+    const donations = await prisma.donation.findMany({
+      where: { userId: req.user?.id },
+      include: {
+        campaign: {
+          include: { user: true },
+        },
+      },
     });
-    if (!campaigns || campaigns.length === 0) {
-      res.status(404).json({ message: "No campaigns found" });
-      return;
-    }
+
+    const campaigns = donations.map((donation) => donation.campaign);
+
     res.status(200).json({
-      message: "All campaigns fetched successfully",
+      message: "Donated campaigns fetched",
       campaigns,
     });
   } catch (error) {
+    console.error("getDonatedCampaigns error:", error);
     res.status(500).json({ message: "Internal server error" });
-    return;
   }
 };
+
 const deleteCampaign = async (req: Request, res: Response) => {
   try {
     if (!req.user || !req.user.id) {
       res.status(401).json({ message: "User not authenticated" });
       return;
     }
+
     const campaignId = Number(req.params.id);
     if (isNaN(campaignId)) {
       res.status(400).json({ message: "Invalid campaign ID" });
       return;
     }
+
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
     });
@@ -84,32 +152,38 @@ const deleteCampaign = async (req: Request, res: Response) => {
       res.status(404).json({ message: "Campaign not found" });
       return;
     }
+
     const isAdmin = req.user.role === "Admin";
     const isGoalMet = campaign.goalAmount === campaign.amountRaised;
 
     if (!isAdmin && !isGoalMet) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized to delete campaign" });
-    }
-    if (isGoalMet) {
-      await prisma.transaction.create({
-        data: {
-          amount: campaign.amountRaised,
-          type: "PAYOUT",
-          status: "COMPLETED",
-          userId: campaign.userId,
-          campaignId: campaign.id,
-        },
-      });
-    }
-    const deletedCampaign = await prisma.campaign.delete({
-      where: { id: campaignId },
-    });
-    if (!deletedCampaign) {
-      res.status(400).json({ message: "Error deleting the campaign" });
+      res.status(403).json({ message: "Unauthorized to delete campaign" });
       return;
     }
+
+    let payoutTransaction = null;
+
+    if (isGoalMet) {
+      await prisma.$transaction([
+        prisma.transaction.create({
+          data: {
+            amount: campaign.amountRaised,
+            type: "PAYOUT",
+            status: "COMPLETED",
+            userId: campaign.userId,
+            campaignId: campaign.id,
+          },
+        }),
+        prisma.campaign.delete({
+          where: { id: campaignId },
+        }),
+      ]);
+    } else {
+      await prisma.campaign.delete({
+        where: { id: campaignId },
+      });
+    }
+
     res.status(200).json({ message: "Campaign deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
@@ -135,56 +209,99 @@ const updateCampaign = async (req: Request, res: Response) => {
       });
       return;
     }
+
     if (!req.user || !req.user.id) {
-      res.status(400).json({ message: "User not authenticated" });
+      res.status(401).json({ message: "User not authenticated" });
       return;
     }
+
     const campaignId = Number(req.params.id);
+    if (isNaN(campaignId)) {
+      res.status(400).json({ message: "Invalid campaign ID" });
+      return;
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+    });
+
+    if (!campaign) {
+      res.status(404).json({ message: "Campaign not found" });
+      return;
+    }
+
+    if (
+      campaign.userId !== req.user.id &&
+      req.user.role !== "CampaignCreator"
+    ) {
+      res.status(403).json({ message: "Unauthorized" });
+      return;
+    }
+
     const { newtitle, newdescription, newgoalamount }: updatePayload =
       parseResult.data;
-    const updatedCampaign = await prisma.campaign.update({
-      where: { id: campaignId },
-      data: {
-        title: newtitle,
-        description: newdescription,
-        goalAmount: newgoalamount,
-      },
-    });
-    if (!updatedCampaign) {
-      res.status(400).json({ message: "Error updating the campaign" });
+    const updateData: any = {};
+    if (newtitle) updateData.title = newtitle;
+    if (newdescription) updateData.description = newdescription;
+    if (newgoalamount) updateData.goalAmount = newgoalamount;
+
+    if (Object.keys(updateData).length === 0) {
+      res.status(400).json({ message: "No valid fields provided for update" });
       return;
     }
-    res
-      .status(200)
-      .json({
-        message: "Campaign details updated successfully",
-        updatedCampaign,
-      });
+
+    const updatedCampaign = await prisma.campaign.update({
+      where: { id: campaignId },
+      data: updateData,
+    });
+
+    res.status(200).json({
+      message: "Campaign updated successfully",
+      campaign: updatedCampaign,
+    });
   } catch (error) {
+    console.error("Error in updateCampaign:", error);
     res.status(500).json({ message: "Internal server error" });
     return;
   }
 };
 
-const isAprroved = async (req: Request, res: Response) => {
+const approveCampaign = async (req: Request, res: Response) => {
   try {
+    const { id } = req.params;
+    const { status } = req.body;
+
     if (!req.user || req.user.role !== "Admin") {
-      if (!req.user || req.user.role !== "Admin") {
-        res.status(403).json({ message: "Access denied. Admins only." });
-        return;
-      }
-    }
-    const campaignId = Number(req.params.id);
-    const approved = await prisma.campaign.update({
-      where: { id: campaignId },
-      data: { isActive: true, cstatus: "APPROVED" },
-    });
-    if (!approved) {
-      res.status(400).json({ message: "Error updating the campaign" });
+      res
+        .status(403)
+        .json({ message: "Only admins can approve/reject campaigns" });
       return;
     }
-    res.status(200).json({ message: "Campaign is approved" });
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: Number(id) },
+    });
+    if (!campaign) {
+      res.status(404).json({ message: "Campaign not found" });
+      return;
+    }
+
+    if (status !== "APPROVED" && status !== "REJECTED") {
+      res.status(400).json({ message: "Invalid status provided" });
+      return;
+    }
+
+    const updatedCampaign = await prisma.campaign.update({
+      where: { id: Number(id) },
+      data: { cstatus: status },
+    });
+
+    res.status(200).json({
+      message: `Campaign ${status.toLowerCase()} successfully`,
+      campaign: updatedCampaign,
+    });
   } catch (error) {
+    console.error("Campaign approval error:", error);
     res.status(500).json({ message: "Internal server error" });
     return;
   }
@@ -192,8 +309,10 @@ const isAprroved = async (req: Request, res: Response) => {
 
 export {
   addCampaign,
+  getCreatorCampaigns,
+  getDonatedCampaigns,
+  readCampaigns,
   deleteCampaign,
   updateCampaign,
-  isAprroved,
-  readCampaign,
+  approveCampaign,
 };

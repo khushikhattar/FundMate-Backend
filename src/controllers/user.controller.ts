@@ -39,7 +39,7 @@ const registerSchema = z
     confirmPassword: z.string().min(8, "Confirm Password"),
     address: z.string({ required_error: "Address is required" }),
     purpose: z.string().optional(),
-    role: z.enum(["Donor", "Admin", "CamapignCreator"]),
+    role: z.enum(["Donor", "Admin", "CampaignCreator"]),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
@@ -86,7 +86,7 @@ const registerUser = async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, 16);
 
-    const createUser = await prisma.user.create({
+    const createdUser = await prisma.user.create({
       data: {
         firstname,
         lastname,
@@ -100,10 +100,12 @@ const registerUser = async (req: Request, res: Response) => {
         purpose,
       },
     });
-
+    if (!createdUser) {
+      res.status(400).json({ message: "Error in creating the user" });
+    }
     res
       .status(201)
-      .json({ message: "User registered successfully", user: createUser });
+      .json({ message: "User registered successfully", user: createdUser });
   } catch (error) {
     console.error("Registration error:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -171,6 +173,19 @@ const loginUser = async (req: Request, res: Response) => {
       });
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
+  }
+};
+const getCurrentUser = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: "Not authenticated" });
+      return;
+    }
+
+    res.status(200).json({ user: req.user });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error });
+    return;
   }
 };
 
@@ -392,4 +407,5 @@ export {
   deleteUser,
   refreshAccessToken,
   logoutUser,
+  getCurrentUser,
 };

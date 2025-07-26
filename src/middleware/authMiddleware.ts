@@ -36,11 +36,14 @@ const verifyUser = async (req: Request, res: Response, next: NextFunction) => {
 
     const user = await prisma.user.findUnique({
       where: { id: decodedToken.id },
-      omit: {
-        password: true,
-        refreshToken: true,
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        role: true,
       },
     });
+
     if (!user) {
       res.status(400).json({ message: "Invalid Access Token" });
       return;
