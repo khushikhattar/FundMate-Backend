@@ -367,14 +367,8 @@ const refreshAccessToken = async (req: Request, res: Response) => {
       incomingrefreshtoken,
       process.env.REFRESH_TOKEN_SECRET as string
     ) as { id: number };
-    const user = req.user;
-    if (!user) {
-      res.status(401).json({ message: "User not found" });
-      return;
-    }
     const dbUser = await prisma.user.findUnique({
       where: { id: decodedToken.id },
-      select: { refreshToken: true },
     });
 
     if (!dbUser || incomingrefreshtoken !== dbUser.refreshToken) {
@@ -383,7 +377,7 @@ const refreshAccessToken = async (req: Request, res: Response) => {
     }
 
     const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
-      user.id
+      dbUser.id
     );
     const options = { httpOnly: true, secure: true };
     res
