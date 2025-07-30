@@ -181,7 +181,6 @@ const getCurrentUser = async (req: Request, res: Response) => {
       res.status(401).json({ message: "Not authenticated" });
       return;
     }
-
     res.status(200).json({ user: req.user });
   } catch (error) {
     res.status(500).json({ message: "Server error", error });

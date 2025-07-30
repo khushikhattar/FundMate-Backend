@@ -3,7 +3,6 @@ import { Request, Response } from "express";
 import { z } from "zod";
 
 const prisma = new PrismaClient();
-
 const addSchema = z.object({
   title: z.string(),
   description: z.string(),
@@ -21,15 +20,19 @@ const addCampaign = async (req: Request, res: Response) => {
       });
       return;
     }
+
     if (!req.user || !req.user.id) {
-      res.status(400).json({ message: "User not authenticated" });
+      res.status(401).json({ message: "User not authenticated" });
       return;
     }
+
     if (req.user.role !== "CampaignCreator") {
-      res.status(400).json({ message: "User not authorised" });
+      res.status(403).json({ message: "User not authorised" });
       return;
     }
+
     const { title, description, goalAmount }: addPayload = parseResult.data;
+
     const addedCampaign = await prisma.campaign.create({
       data: {
         title,
@@ -50,19 +53,16 @@ const addCampaign = async (req: Request, res: Response) => {
     return;
   }
 };
+
 const readCampaigns = async (req: Request, res: Response) => {
   try {
     const { isApproved, userId } = req.query;
 
     const filters: any = {};
-    if (isApproved === "true") {
-      filters.cstatus = "APPROVED";
-    } else if (isApproved === "false") {
-      filters.cstatus = "PENDING";
-    }
-    if (userId) {
-      filters.userId = parseInt(userId as string);
-    }
+    if (isApproved === "true") filters.cstatus = "APPROVED";
+    else if (isApproved === "false") filters.cstatus = "PENDING";
+
+    if (userId) filters.userId = parseInt(userId as string);
 
     const campaigns = await prisma.campaign.findMany({
       where: filters,
@@ -79,18 +79,34 @@ const readCampaigns = async (req: Request, res: Response) => {
         donations: true,
         milestones: true,
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
 
-    res.status(200).json({ campaigns });
+    const enrichedCampaigns = campaigns.map((c) => {
+      const approvedMilestones = c.milestones.filter(
+        (m) => m.status === "APPROVED"
+      ).length;
+      const totalMilestones = c.milestones.length;
+      const percentageRaised =
+        (Number(c.amountRaised) / Number(c.goalAmount)) * 100;
+
+      return {
+        ...c,
+        approvedMilestones,
+        totalMilestones,
+        percentageRaised: Math.floor(percentageRaised),
+      };
+    });
+
+    res.status(200).json({ campaigns: enrichedCampaigns });
   } catch (error) {
     console.error("Error reading campaigns:", error);
     res.status(500).json({ message: "Server error" });
+    return;
   }
 };
-const getCreatorCampaigns = async (req: Request, res: Response) => {
+
+const getCampaigns = async (req: Request, res: Response) => {
   try {
     const campaigns = await prisma.campaign.findMany({
       where: { userId: req.user?.id },
@@ -120,7 +136,7 @@ const getDonatedCampaigns = async (req: Request, res: Response) => {
       },
     });
 
-    const campaigns = donations.map((donation) => donation.campaign);
+    const campaigns = donations.map((d) => d.campaign);
 
     res.status(200).json({
       message: "Donated campaigns fetched",
@@ -129,6 +145,7 @@ const getDonatedCampaigns = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("getDonatedCampaigns error:", error);
     res.status(500).json({ message: "Internal server error" });
+    return;
   }
 };
 
@@ -156,12 +173,21 @@ const deleteCampaign = async (req: Request, res: Response) => {
     const isAdmin = req.user.role === "Admin";
     const isGoalMet = campaign.goalAmount === campaign.amountRaised;
 
+    const hasDonations = await prisma.donation.findFirst({
+      where: { campaignId },
+    });
+
+    if (hasDonations && !isAdmin) {
+      res
+        .status(403)
+        .json({ message: "Cannot delete a campaign with donations" });
+      return;
+    }
+
     if (!isAdmin && !isGoalMet) {
       res.status(403).json({ message: "Unauthorized to delete campaign" });
       return;
     }
-
-    let payoutTransaction = null;
 
     if (isGoalMet) {
       await prisma.$transaction([
@@ -174,19 +200,46 @@ const deleteCampaign = async (req: Request, res: Response) => {
             campaignId: campaign.id,
           },
         }),
-        prisma.campaign.delete({
-          where: { id: campaignId },
-        }),
+        prisma.campaign.delete({ where: { id: campaignId } }),
       ]);
     } else {
-      await prisma.campaign.delete({
-        where: { id: campaignId },
-      });
+      await prisma.campaign.delete({ where: { id: campaignId } });
     }
 
     res.status(200).json({ message: "Campaign deleted successfully" });
   } catch (error) {
+    console.error("deleteCampaign error:", error);
     res.status(500).json({ message: "Internal server error" });
+    return;
+  }
+};
+
+const myCampaigns = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    const campaigns = await prisma.campaign.findMany({
+      where: {
+        userId: userId,
+      },
+      include: {
+        milestones: true,
+        donations: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    res.status(200).json({ campaigns });
+  } catch (error) {
+    console.error("Error in myCampaigns:", error);
+    res.status(500).json({ message: "Failed to fetch campaigns" });
     return;
   }
 };
@@ -196,7 +249,6 @@ const updateSchema = z.object({
   newdescription: z.string().optional(),
   newgoalamount: z.bigint().optional(),
 });
-
 type updatePayload = z.infer<typeof updateSchema>;
 
 const updateCampaign = async (req: Request, res: Response) => {
@@ -230,6 +282,11 @@ const updateCampaign = async (req: Request, res: Response) => {
       return;
     }
 
+    if (campaign.cstatus === "APPROVED") {
+      res.status(403).json({ message: "Cannot update an approved campaign" });
+      return;
+    }
+
     if (
       campaign.userId !== req.user.id &&
       req.user.role !== "CampaignCreator"
@@ -240,6 +297,7 @@ const updateCampaign = async (req: Request, res: Response) => {
 
     const { newtitle, newdescription, newgoalamount }: updatePayload =
       parseResult.data;
+
     const updateData: any = {};
     if (newtitle) updateData.title = newtitle;
     if (newdescription) updateData.description = newdescription;
@@ -281,6 +339,7 @@ const approveCampaign = async (req: Request, res: Response) => {
     const campaign = await prisma.campaign.findUnique({
       where: { id: Number(id) },
     });
+
     if (!campaign) {
       res.status(404).json({ message: "Campaign not found" });
       return;
@@ -296,6 +355,20 @@ const approveCampaign = async (req: Request, res: Response) => {
       data: { cstatus: status },
     });
 
+    if (status === "APPROVED") {
+      const firstMilestone = await prisma.milestone.findFirst({
+        where: { campaignId: Number(id) },
+        orderBy: { createdAt: "asc" },
+      });
+
+      if (firstMilestone) {
+        await prisma.milestone.update({
+          where: { id: firstMilestone.id },
+          data: { isActive: true },
+        });
+      }
+    }
+
     res.status(200).json({
       message: `Campaign ${status.toLowerCase()} successfully`,
       campaign: updatedCampaign,
@@ -309,10 +382,11 @@ const approveCampaign = async (req: Request, res: Response) => {
 
 export {
   addCampaign,
-  getCreatorCampaigns,
+  getCampaigns,
   getDonatedCampaigns,
   readCampaigns,
   deleteCampaign,
   updateCampaign,
   approveCampaign,
+  myCampaigns,
 };

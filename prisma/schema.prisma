@@ -27,11 +27,9 @@ enum CampaignStatus {
 }
 
 enum MilestoneStatus {
-  PENDING
-  SUBMITTED
-  APPROVED
-  REJECTED
-  PAID
+  COMPLETED
+  NOTSTARTED
+  INPROGRESS
 }
 
 enum TransactionType {
@@ -97,7 +95,7 @@ model Milestone {
   amount       BigInt
   goalAmount   BigInt
   proofUrl     String?
-  status       MilestoneStatus @default(PENDING)
+  status       MilestoneStatus @default(NOTSTARTED)
   createdAt    DateTime        @default(now())
   campaignId   Int
   campaign     Campaign        @relation(fields: [campaignId], references: [id])
@@ -107,7 +105,7 @@ model Milestone {
 
 model MilestoneVote {
   id          Int       @id @default(autoincrement())
-  approved    Boolean
+  vote        Boolean
   userId      Int
   user        User      @relation(fields: [userId], references: [id])
   milestoneId Int

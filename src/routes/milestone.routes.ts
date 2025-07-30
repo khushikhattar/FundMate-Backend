@@ -5,7 +5,9 @@ import {
   deleteMilestone,
   updateMilestone,
   readMilestones,
+  getMilestonesGroupedByCampaign,
 } from "../controllers/milestone.controller";
+
 import { verifyUser } from "../middleware/authMiddleware";
 import { authorizeRoles } from "../middleware/roleMiddleware";
 
@@ -17,24 +19,30 @@ router.post(
   authorizeRoles("CampaignCreator"),
   addMilestone
 );
+
 router.get(
   "/read",
   verifyUser,
   authorizeRoles("CampaignCreator", "Donor", "Admin"),
   readMilestones
 );
+
+router.get("/grouped-by-campaign", getMilestonesGroupedByCampaign);
+
 router.delete(
   "/milestone/:id",
   verifyUser,
   authorizeRoles("CampaignCreator"),
   deleteMilestone
 );
+
 router.put(
   "/milestone/:id",
   verifyUser,
   authorizeRoles("CampaignCreator"),
   updateMilestone
 );
+
 router.post(
   "/milestone/vote",
   verifyUser,
