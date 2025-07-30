@@ -84,7 +84,7 @@ const readCampaigns = async (req: Request, res: Response) => {
 
     const enrichedCampaigns = campaigns.map((c) => {
       const approvedMilestones = c.milestones.filter(
-        (m) => m.status === "APPROVED"
+        (m) => m.approvalStatus === "APPROVED"
       ).length;
       const totalMilestones = c.milestones.length;
       const percentageRaised =

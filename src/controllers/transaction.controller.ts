@@ -16,7 +16,7 @@ const createOrder = async (req: Request, res: Response) => {
     const razorpay = createRazorpayInstance();
 
     const options = {
-      amount: amount * 100, // convert to paisa
+      amount: amount * 100,
       currency: "INR",
       receipt: `receipt_${campaignId}_${milestoneId}_${Date.now()}`,
     };
@@ -24,15 +24,17 @@ const createOrder = async (req: Request, res: Response) => {
     razorpay.orders.create(options, (err, order) => {
       if (err) {
         console.error(err);
-        return res
+        res
           .status(500)
           .json({ message: "Error creating Razorpay order", success: false });
+        return;
       }
       res.status(200).json({ success: true, order });
     });
   } catch (error) {
     console.error("createOrder error:", error);
     res.status(500).json({ message: "Internal server error" });
+    return;
   }
 };
 
@@ -99,7 +101,7 @@ const verifyPayment = async (req: Request, res: Response) => {
       await tx.milestone.update({
         where: { id: milestoneId },
         data: {
-          amount: milestone.amount + BigInt(amount),
+          amount: BigInt(milestone.amount) + BigInt(amount),
         },
       });
       if (updatedCampaign.amountRaised >= updatedCampaign.goalAmount) {

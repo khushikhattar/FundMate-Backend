@@ -26,10 +26,16 @@ enum CampaignStatus {
   COMPLETED
 }
 
-enum MilestoneStatus {
-  COMPLETED
+enum WorkStatus {
   NOTSTARTED
   INPROGRESS
+  COMPLETED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum TransactionType {
@@ -88,30 +94,32 @@ model Donation {
 }
 
 model Milestone {
-  id           Int             @id @default(autoincrement())
-  title        String
-  description  String?
-  isActive     Boolean         @default(false)
-  amount       BigInt
-  goalAmount   BigInt
-  proofUrl     String?
-  status       MilestoneStatus @default(NOTSTARTED)
-  createdAt    DateTime        @default(now())
-  campaignId   Int
-  campaign     Campaign        @relation(fields: [campaignId], references: [id])
-  votes        MilestoneVote[]
-  transactions Transaction[]
+  id             Int             @id @default(autoincrement())
+  title          String
+  description    String?
+  dueDate        DateTime
+  amount         BigInt
+  isActive       Boolean         @default(false)
+  campaign       Campaign        @relation(fields: [campaignId], references: [id])
+  campaignId     Int
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  status         WorkStatus      @default(NOTSTARTED)
+  approvalStatus ApprovalStatus  @default(PENDING)
+  votes          MilestoneVote[]
+  Transaction    Transaction[]
 }
 
 model MilestoneVote {
   id          Int       @id @default(autoincrement())
-  vote        Boolean
-  userId      Int
-  user        User      @relation(fields: [userId], references: [id])
-  milestoneId Int
   milestone   Milestone @relation(fields: [milestoneId], references: [id])
+  milestoneId Int
+  user        User      @relation(fields: [userId], references: [id])
+  userId      Int
+  vote        Boolean
+  createdAt   DateTime  @default(now())
 
-  @@unique([userId, milestoneId])
+  @@unique([milestoneId, userId])
 }
 
 model Transaction {

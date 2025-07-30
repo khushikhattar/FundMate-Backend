@@ -12,7 +12,6 @@ import { verifyUser } from "../middleware/authMiddleware";
 import { authorizeRoles } from "../middleware/roleMiddleware";
 
 const router = express.Router();
-
 router.post(
   "/milestone",
   verifyUser,
