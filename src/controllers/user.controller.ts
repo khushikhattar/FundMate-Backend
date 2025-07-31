@@ -102,6 +102,7 @@ const registerUser = async (req: Request, res: Response) => {
     });
     if (!createdUser) {
       res.status(400).json({ message: "Error in creating the user" });
+       return;
     }
     res
       .status(201)
@@ -109,6 +110,7 @@ const registerUser = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Registration error:", error);
     res.status(500).json({ message: "Internal server error" });
+     return;
   }
 };
 
@@ -149,6 +151,7 @@ const loginUser = async (req: Request, res: Response) => {
     );
     if (!isPasswordCorrect) {
       res.status(401).json({ message: "Invalid password" });
+       return;
     }
     const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
       existedUser.id
@@ -173,6 +176,7 @@ const loginUser = async (req: Request, res: Response) => {
       });
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
+     return;
   }
 };
 const getCurrentUser = async (req: Request, res: Response) => {
@@ -329,10 +333,12 @@ const updatePassword = async (req: Request, res: Response) => {
 
     if (!updatedPassword) {
       res.status(400).json({ message: "Error updating password" });
+       return;
     }
     res.status(200).json({ message: "Password updated successfully" });
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
+     return;
   }
 };
 
@@ -347,10 +353,12 @@ const deleteUser = async (req: Request, res: Response) => {
     });
     if (!deletedUser) {
       res.status(404).json({ message: "Error occurred in deleting the user " });
+       return;
     }
     res.status(200).json({ message: "User deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
+     return;
   }
 };
 
@@ -396,6 +404,7 @@ const refreshAccessToken = async (req: Request, res: Response) => {
       message: "Invalid refresh token",
       error: (error as Error).message,
     });
+     return;
   }
 };
 
