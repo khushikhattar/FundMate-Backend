@@ -9,7 +9,7 @@ const router = Router();
 router.use("/auth", authRouter);
 router.use("/users", userRouter);
 router.use("/campaigns", campaignRouter);
-router.use("/milestones", milestoneRouter);
+router.use("campaigns", milestoneRouter);
 router.use("/transactions", transactionRouter);
 
 export default router;
