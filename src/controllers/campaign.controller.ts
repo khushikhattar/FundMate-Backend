@@ -119,7 +119,7 @@ const getCampaigns = async (req: Request, res: Response) => {
       campaigns,
     });
   } catch (error) {
-    console.error("getCreatorCampaigns error:", error);
+    console.error("getCampaigns error:", error);
     res.status(500).json({ message: "Internal server error" });
     return;
   }
